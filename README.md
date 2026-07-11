@@ -32,7 +32,7 @@ python stf.py \
   
 python PAPO.py \
 --model_name microsoft/deberta-v3-base \ 
---dataset beetle
+--dataset beetle \
 --sft_best_dir results_ce_ppo/deberta-v3-base_scientsbank/sft_best \
 -rl_epochs 2 \
 --ppo_epochs 4 \
