@@ -19,17 +19,16 @@ beetle: https://huggingface.co/datasets/nkazi/Beetle
 Create a folder named DataSet, Put the dataset in the DataSet directory
 
 # Supervised Warm-Start
-
+```
 python stf.py \
   --model_name microsoft/deberta-v3-base \
   --dataset beetle \
   --output_dir results_ce_ppo \
   --lr 1e-5 \
   --sft_epochs 5
-
+```
 # RAPO
-
-  
+```
 python PAPO.py \
   --model_name microsoft/deberta-v3-base \ 
   --dataset beetle \
@@ -40,7 +39,7 @@ python PAPO.py \
   --ppo_clip 0.2 \
   --false_negative_reward -1.5 \
   --false_positive_reward -1.2
-
+```
 
 # Main experimental results
 <img src=".\Images\T1.png">
