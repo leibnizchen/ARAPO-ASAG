@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 import argparse
 import json
 import random
@@ -19,33 +19,8 @@ from transformers import (
 )
 import pandas as pd
 from datasetload import AnswerGradingDataset,align_binary_labels,compute_class_weights,load_raw_dataset,label_distribution
-from metrics import compute_metrics
-
-def compute_ece(probs, labels, n_bins=10):
-
-    confidences = np.max(probs, axis=1)
-    predictions = np.argmax(probs, axis=1)
-
-    accuracies = predictions == labels
-
-    bins = np.linspace(0,1,n_bins+1)
-
-    ece = 0
-
-    for i in range(n_bins):
-
-        mask = (confidences > bins[i]) & (confidences <= bins[i+1])
-
-        if np.sum(mask)==0:
-            continue
-
-        acc = accuracies[mask].mean()
-
-        conf = confidences[mask].mean()
-
-        ece += np.abs(acc-conf) * np.sum(mask)/len(labels)
-
-    return ece
+from metrics import compute_metrics,compute_ece
+from uitls import ensure_dir,save_metrics
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -53,6 +28,7 @@ def parse_args():
     # 模型与数据
     parser.add_argument("--model_name", type=str, default="/home/shared/winston/model/microsoft/deberta-v3-base")
     parser.add_argument("--dataset", type=str, default="scientsbank", choices=["scientsbank", "beetle"])
+    parser.add_argument("--sft_best_dir", type=str, default="results_ce_ppo/deberta-v3-base_scientsbank/sft_best")
     parser.add_argument("--output_dir", type=str, default="results_ce_ppo")
     parser.add_argument("--selection_split", type=str, default="test_ua",
                         help="用于选择最优 checkpoint 的 split。默认沿用 baseline 的 test_ua。")
@@ -129,12 +105,6 @@ def safe_float(x: torch.Tensor) -> torch.Tensor:
     return x.float() if x.dtype != torch.float32 else x
 
 
-def ensure_dir(path: Path):
-    path.mkdir(parents=True, exist_ok=True)
-
-
-
-
 
 def build_loader(hf_dataset, tokenizer, batch_size: int, max_length: int,
                  shuffle: bool, num_workers: int) -> DataLoader:
@@ -191,35 +161,7 @@ def evaluate_all_splits(model, test_data, tokenizer, args, device: torch.device)
     return results
 
 
-def save_metrics(metrics_by_split: Dict[str, Dict[str, float]], save_prefix: Path):
-    """
-    统一保存 JSON / CSV / XLSX（若 pandas + excel 引擎可用）。
-    """
-    ensure_dir(save_prefix.parent)
 
-    json_path = save_prefix.with_suffix(".json")
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(metrics_by_split, f, ensure_ascii=False, indent=2)
-
-    rows = []
-    for split_name, metrics in metrics_by_split.items():
-        row = {"split": split_name}
-        row.update(metrics)
-        rows.append(row)
-
-    # 无 pandas 时，至少 JSON 已保存
-    if pd is None:
-        return
-
-    df = pd.DataFrame(rows)
-    csv_path = save_prefix.with_suffix(".csv")
-    df.to_csv(csv_path, index=False, encoding="utf-8-sig")
-
-    xlsx_path = save_prefix.with_suffix(".xlsx")
-    try:
-        df.to_excel(xlsx_path, index=False)
-    except Exception as e:
-        print(f"[Warn] 保存 xlsx 失败，仅保留 json/csv：{e}")
 
 
 # =========================
@@ -541,10 +483,10 @@ def main():
     else:
         print(f"[Train] class weights={class_weights.detach().cpu().tolist()}")
 
-    sft_best_dir = '/home/shared/CL/PPO/results_ce_ppo/deberta-v3-base_scientsbank/sft_best'
+
 
     model = build_model(
-        model_name_or_dir=str(sft_best_dir),
+        model_name_or_dir=args.sft_best_dir,
         model_dtype=model_dtype,
         device=device,
         gradient_checkpointing=args.gradient_checkpointing,
@@ -555,7 +497,7 @@ def main():
     if args.kl_coef > 0.0:
         print(f"[RL] kl_coef={args.kl_coef} > 0，加载固定 SFT reference model。")
         ref_model = build_model(
-            model_name_or_dir=str(sft_best_dir),
+            model_name_or_dir=args.sft_best_dir,
             model_dtype=model_dtype,
             device=device,
             gradient_checkpointing=False,

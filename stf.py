@@ -23,10 +23,11 @@ from datasetload import AnswerGradingDataset,align_binary_labels,compute_class_w
 from metrics import compute_metrics
 import pandas as pd
 
-
 import torch
 import torch.nn.functional as F
-print(torch.cuda.current_device())
+from uitls import ensure_dir,save_metrics
+
+
 def FocalLoss(logits, targets, alpha=0.25, gamma=2.0, reduction='mean'):
     ce_loss = F.cross_entropy(logits, targets, reduction='none')
     pt = torch.exp(-ce_loss)   # pt = predicted probability of the true class
@@ -42,34 +43,24 @@ def FocalLoss(logits, targets, alpha=0.25, gamma=2.0, reduction='mean'):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-
     # 模型与数据
     parser.add_argument("--model_name", type=str, default="/home/shared/winston/model/microsoft/deberta-v3-base")
     parser.add_argument("--dataset", type=str, default="beetle", choices=["scientsbank", "beetle"])
     parser.add_argument("--output_dir", type=str, default="results_ce_ppo")
-    parser.add_argument("--selection_split", type=str, default="test_ua"
-                        )
-
+    parser.add_argument("--selection_split", type=str, default="test_ua")
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--eval_batch_size", type=int, default=8)
     parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--seed", type=int, default=42)
-
     parser.add_argument("--lr", type=float, default=1e-5)
-
     parser.add_argument("--sft_epochs", type=int, default=5)
-
     parser.add_argument("--weight_decay", type=float, default=0.01)
-
-
-
     parser.add_argument("--warmup_ratio", type=float, default=0.05)
     parser.add_argument("--max_grad_norm", type=float, default=1.0)
     parser.add_argument("--disable_class_weights", action="store_true")
     parser.add_argument("--gradient_checkpointing", action="store_true")
     parser.add_argument("--force_fp32", action="store_true")
-
     return parser.parse_args()
 
 
@@ -94,8 +85,6 @@ def safe_float(x: torch.Tensor) -> torch.Tensor:
     return x.float() if x.dtype != torch.float32 else x
 
 
-def ensure_dir(path: Path):
-    path.mkdir(parents=True, exist_ok=True)
 
 
 def build_loader(hf_dataset, tokenizer, batch_size: int, max_length: int,
@@ -108,7 +97,7 @@ def build_loader(hf_dataset, tokenizer, batch_size: int, max_length: int,
         num_workers=num_workers,
         pin_memory=torch.cuda.is_available(),
     )
-
+@torch.no_grad()
 def evaluate(model, hf_dataset, tokenizer, args, device: torch.device) -> Dict[str, float]:
     loader = build_loader(
         hf_dataset=hf_dataset,
@@ -147,32 +136,6 @@ def evaluate_all_splits(model, test_data, tokenizer, args, device: torch.device)
     return results
 
 
-def save_metrics(metrics_by_split: Dict[str, Dict[str, float]], save_prefix: Path):
-    ensure_dir(save_prefix.parent)
-
-    json_path = save_prefix.with_suffix(".json")
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(metrics_by_split, f, ensure_ascii=False, indent=2)
-
-    rows = []
-    for split_name, metrics in metrics_by_split.items():
-        row = {"split": split_name}
-        row.update(metrics)
-        rows.append(row)
-
-    # 无 pandas 时，至少 JSON 已保存
-    if pd is None:
-        return
-
-    df = pd.DataFrame(rows)
-    csv_path = save_prefix.with_suffix(".csv")
-    df.to_csv(csv_path, index=False, encoding="utf-8-sig")
-
-    xlsx_path = save_prefix.with_suffix(".xlsx")
-    try:
-        df.to_excel(xlsx_path, index=False)
-    except Exception as e:
-        print(f"[Warn] 保存 xlsx 失败，仅保留 json/csv：{e}")
 
 
 def build_model(model_name_or_dir: str, model_dtype: torch.dtype, device: torch.device,
@@ -206,6 +169,7 @@ def save_checkpoint(model, tokenizer, save_dir: Path):
     ensure_dir(save_dir)
     model.save_pretrained(save_dir)
     tokenizer.save_pretrained(save_dir)
+
 
 
 def print_metrics_brief(prefix: str, metrics: Dict[str, float]):
@@ -253,14 +217,6 @@ def train_sft(
     best_score = -1.0
     best_metrics_all = None
     best_dir = run_dir / "sft_best"
-    selection_metrics = evaluate(
-        model=model,
-        hf_dataset=test_data[args.selection_split],
-        tokenizer=tokenizer,
-        args=args,
-        device=device,
-    )
-
     for epoch in range(1, args.sft_epochs + 1):
         model.train()
         running_loss = 0.0

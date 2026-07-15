@@ -69,3 +69,28 @@ def compute_metrics(preds: List[int], labels: List[int]) -> Dict[str, float]:
         "num_samples": n,
     }
 
+def compute_ece(probs, labels, n_bins=10):
+    confidences = np.max(probs, axis=1)
+    predictions = np.argmax(probs, axis=1)
+
+    accuracies = predictions == labels
+
+    bins = np.linspace(0,1,n_bins+1)
+
+    ece = 0
+
+    for i in range(n_bins):
+
+        mask = (confidences > bins[i]) & (confidences <= bins[i+1])
+
+        if np.sum(mask)==0:
+            continue
+
+        acc = accuracies[mask].mean()
+
+        conf = confidences[mask].mean()
+
+        ece += np.abs(acc-conf) * np.sum(mask)/len(labels)
+
+    return ece
+
