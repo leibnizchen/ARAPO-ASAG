@@ -1,9 +1,11 @@
-# RAPO-ASAG
+# RAPO-ASAG: Reward-Aligned Proximal Optimization for Automatic Short Answer Grading
 
+Automatic Short Answer Grading (ASAG) has achieved significant progress with pretrained language models, yet existing methods mainly optimize supervised objectives that treat grading errors equally and fail to capture pedagogical priorities. In this paper, we propose RAPO-ASAG, a Reward-Aligned Proximal Optimization framework that reformulates ASAG as a contextual bandit problem and optimizes grading decisions through educationally aligned rewards. RAPO-ASAG first obtains a reliable grading policy through supervised warm-start training. It then performs constrained policy refinement using a PPO-style clipped objective and an asymmetric utility function that assigns different penalties to false negatives and false positives. Rather than using PPO for sequential credit assignment, we use clipping, supervised anchoring, KL regularization, and entropy regularization to limit policy drift during reward-based refinement. Experiments on SciEntsBank and Beetle show that RAPO-ASAG consistently outperforms strong baselines, achieving Macro-F1 scores of 0.8278 on SciEntsBank unseen-answer evaluation and 0.9083 on Beetle unseen-answer evaluation. Further analysis reveals improved calibration and fewer critical grading errors, validating the effectiveness of our reward-aligned framework for reliable assessment.
 
-
-<img src=".\Images\test.png">
-
+<div align=center> 
+<img src=".\Image\F1.png">
+</div>
+ 
 # Environment
 conda create -n LLMGrading python=3.10
 
@@ -42,8 +44,14 @@ python PAPO.py \
 ```
 
 # Main experimental results
-<img src=".\Images\T1.png">
+<img src=".\Image\T1.png">
 
-<img src=".\Images\T2.png">
+<img src=".\Image\T2.png">
 
-<img src=".\Images\T3.png">
+<img src=".\Image\F2.png">
+
+<img src=".\Image\T3.png">
+
+<img src=".\Image\T4.png">
+
+<img src=".\Image\T5.png">
